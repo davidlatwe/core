@@ -143,7 +143,18 @@ def preserve_selection(tree_view,
 
 def _list_project_silos():
     """List the silos from the project's configuration"""
-    silos = io.distinct("silo")
+    # Backwards compatible way to get silos/top assets from DB:
+    silo_existence = {
+        'type': 'asset',
+        '$or': [{'silo': {'$exists': False}}, {'silo': None}]
+    }
+    if len(list(io.find(silo_existence))) > 0:
+        silos = [s['name'] for s in io.find({
+            'type': 'asset',
+            'data.visualParent': None
+        })]
+    else:
+        silos = io.distinct("silo")
 
     if not silos:
         project = io.find_one({"type": "project"})
@@ -180,6 +191,19 @@ class AssetModel(TreeModel):
     def set_silo(self, silo, refresh=True):
         """Set the root path to the ItemType root."""
         self._silo = silo
+        silo_existence = {
+            'type': 'asset',
+            '$or': [{'silo': {'$exists': False}}, {'silo': None}]
+        }
+        if len(list(io.find(silo_existence))) > 0:
+            self.silo_asset = io.find_one({
+                'type': 'asset',
+                'name': silo,
+                'data.visualParent': None
+            })
+        else:
+            self.silo_asset = None
+
         if refresh:
             self.refresh()
 
@@ -193,12 +217,16 @@ class AssetModel(TreeModel):
         if parent is None:
             # if not a parent find all that are parented to the project
             # or do *not* have a visualParent field at all
-            find_data['$or'] = [
-                {'data.visualParent': {'$exists': False}},
-                {'data.visualParent': None}
-            ]
+            if self.silo_asset is None:
+                find_data['$or'] = [
+                    {'data.visualParent': {'$exists': False}},
+                    {'data.visualParent': None}
+                ]
+            else:
+                find_data['data.visualParent'] = self.silo_asset['_id']
+
         else:
-            find_data["data.visualParent"] = parent['_id']
+            find_data['data.visualParent'] = parent['_id']
 
         assets = io.find(find_data).sort('name', 1)
 
@@ -536,12 +564,23 @@ class AssetWidget(QtWidgets.QWidget):
 
         silos = _list_project_silos()
         self.silo.set_silos(silos)
-
+        if len(silos) > 0:
+            self.silo.set_current_silo(self.silo.tabText(0))
         self._refresh_model()
 
     def get_current_silo(self):
         """Returns the currently active silo."""
         return self.silo.get_current_silo()
+
+    def get_silo_object(self, silo_name=None):
+        """ Returns silo object from db. None if not found.
+        Current silo is found if silo_name not entered."""
+        if silo_name is None:
+            silo_name = self.get_current_silo()
+        try:
+            return io.find_one({"type": "asset", "name": silo_name})
+        except Exception:
+            return None
 
     def get_active_asset(self):
         """Return the asset id the current asset."""

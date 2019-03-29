@@ -230,13 +230,14 @@ class TasksModel(TreeModel):
             tasks.update(asset_tasks)
 
         # If no asset tasks are defined, use the project tasks.
-        if assets and not tasks:
+        if len(tasks) == 0:
             project = io.find_one({"type": "project"})
             tasks.update(
                 [task["name"] for task in project["config"].get("tasks", [])]
             )
 
         self.clear()
+
         self.beginResetModel()
 
         default_icon = self._icons["__default__"]
