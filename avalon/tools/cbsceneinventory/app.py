@@ -491,11 +491,11 @@ class SwitchAssetDialog(QtWidgets.QDialog):
         subset_layout = QtWidgets.QVBoxLayout()
         repre_layout = QtWidgets.QVBoxLayout()
 
-        accept_icon = qta.icon("fa.check", color="white")
+        accept_icon = qta.icon("fa.exchange", color="white")
         accept_btn = QtWidgets.QPushButton()
         accept_btn.setIcon(accept_icon)
-        accept_btn.setFixedWidth(24)
-        accept_btn.setFixedHeight(24)
+        accept_btn.setFixedWidth(30)
+        accept_btn.setFixedHeight(30)
 
         loader_menu = QtWidgets.QMenu(accept_btn)
         accept_btn.setMenu(loader_menu)
