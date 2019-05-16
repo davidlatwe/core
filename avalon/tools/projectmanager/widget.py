@@ -564,8 +564,6 @@ class AssetWidget(QtWidgets.QWidget):
 
         silos = _list_project_silos()
         self.silo.set_silos(silos)
-        if len(silos) > 0:
-            self.silo.set_current_silo(self.silo.tabText(0))
         self._refresh_model()
 
     def get_current_silo(self):
