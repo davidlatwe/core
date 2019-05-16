@@ -497,6 +497,9 @@ class SwitchAssetDialog(QtWidgets.QDialog):
         accept_btn.setFixedWidth(24)
         accept_btn.setFixedHeight(24)
 
+        loader_menu = QtWidgets.QMenu(accept_btn)
+        accept_btn.setMenu(loader_menu)
+
         asset_layout.addWidget(self._assets_box)
         asset_layout.addWidget(self._asset_label)
         subset_layout.addWidget(self._subsets_box)
@@ -510,6 +513,7 @@ class SwitchAssetDialog(QtWidgets.QDialog):
         context_layout.addWidget(accept_btn)
 
         self._accept_btn = accept_btn
+        self._loader_menu = loader_menu
 
         self._assets_box.currentIndexChanged.connect(self.on_assets_change)
         self._subsets_box.currentIndexChanged.connect(self.on_subset_change)
@@ -521,8 +525,6 @@ class SwitchAssetDialog(QtWidgets.QDialog):
         self.setLayout(main_layout)
         self.setWindowTitle("Switch selected items ...")
 
-        self.connections()
-
         self.refresh()
 
         self.setFixedSize(self.sizeHint())  # Lock window size
@@ -530,9 +532,6 @@ class SwitchAssetDialog(QtWidgets.QDialog):
         # Set default focus to accept button so you don't directly type in
         # first asset field, this also allows to see the placeholder value.
         accept_btn.setFocus()
-
-    def connections(self):
-        self._accept_btn.clicked.connect(self._on_accept)
 
     def on_assets_change(self):
         self.refresh(1)
@@ -611,10 +610,17 @@ class SwitchAssetDialog(QtWidgets.QDialog):
         subset_name = self._subsets_box.get_valid_value() or None
         repre_name = self._representations_box.get_valid_value() or None
 
+        representations = list()
+
         asset_ok = True
         subset_ok = True
         repre_ok = True
         for item in self._items:
+            # Preserve input value
+            _asset_name = asset_name
+            _subset_name = subset_name
+            _repre_name = repre_name
+
             if any(not x for x in [asset_name, subset_name, repre_name]):
                 _id = io.ObjectId(item["representation"])
                 representation = io.find_one({
@@ -624,20 +630,20 @@ class SwitchAssetDialog(QtWidgets.QDialog):
                 version, subset, asset, project = io.parenthood(representation)
 
                 if asset_name is None:
-                    asset_name = asset["name"]
+                    _asset_name = asset["name"]
 
                 if subset_name is None:
-                    subset_name = subset["name"]
+                    _subset_name = subset["name"]
 
                 if repre_name is None:
-                    repre_name = representation["name"]
+                    _repre_name = representation["name"]
 
-            asset = io.find_one({"name": asset_name, "type": "asset"})
+            asset = io.find_one({"name": _asset_name, "type": "asset"})
             if asset is None:
                 asset_ok = False
                 continue
             subset = io.find_one({
-                "name": subset_name,
+                "name": _subset_name,
                 "type": "subset",
                 "parent": asset["_id"]
             })
@@ -656,17 +662,19 @@ class SwitchAssetDialog(QtWidgets.QDialog):
                 continue
 
             repre = io.find_one({
-                "name": repre_name,
+                "name": _repre_name,
                 "type": "representation",
                 "parent": version["_id"]
             })
             if repre is None:
                 repre_ok = False
+            else:
+                representations.append(repre)
 
         asset_sheet = ''
         subset_sheet = ''
         repre_sheet = ''
-        accept_sheet = ''
+
         error_msg = '*Please select'
         if asset_ok is False:
             asset_sheet = 'border: 1px solid red;'
@@ -677,15 +685,57 @@ class SwitchAssetDialog(QtWidgets.QDialog):
         if repre_ok is False:
             repre_sheet = 'border: 1px solid red;'
             self._repre_label.setText(error_msg)
-        if asset_ok and subset_ok and repre_ok:
-            accept_sheet = 'border: 1px solid green;'
 
         self._assets_box.setStyleSheet(asset_sheet)
         self._subsets_box.setStyleSheet(subset_sheet)
         self._representations_box.setStyleSheet(repre_sheet)
 
+        accept_sheet = ''
+        if asset_ok and subset_ok and repre_ok:
+            accept_sheet = 'border: 1px solid green;'
+
+            loaders = self._get_loaders(representations)
+            self._build_loader_menu(loaders)
+        else:
+            self._build_loader_menu([])
+
         self._accept_btn.setEnabled(asset_ok and subset_ok and repre_ok)
         self._accept_btn.setStyleSheet(accept_sheet)
+
+    def _build_loader_menu(self, loaders):
+
+        # Get and destroy the action group
+        group = self._accept_btn.findChild(QtWidgets.QActionGroup)
+        if group:
+            group.deleteLater()
+
+        # Build new action group
+        group = QtWidgets.QActionGroup(self._accept_btn)
+
+        for loader in loaders:
+            # Label
+            label = getattr(loader, "label", None)
+            if label is None:
+                label = loader.__name__
+
+            action = group.addAction(label)
+            action.setData(loader)
+
+            # Support font-awesome icons using the `.icon` and `.color`
+            # attributes on plug-ins.
+            icon = getattr(loader, "icon", None)
+            if icon is not None:
+                try:
+                    key = "fa.{0}".format(icon)
+                    color = getattr(loader, "color", "white")
+                    action.setIcon(qta.icon(key, color=color))
+                except Exception as e:
+                    print("Unable to set icon for loader "
+                          "{}: {}".format(loader, e))
+
+            self._loader_menu.addAction(action)
+
+        group.triggered.connect(self._on_action_clicked)
 
     def _get_assets(self):
         filtered_assets = []
@@ -788,6 +838,24 @@ class SwitchAssetDialog(QtWidgets.QDialog):
 
         return list(possible_repres)
 
+    def _get_loaders(self, representations):
+
+        available_loaders = filter(
+            lambda l: not (hasattr(l, "is_utility") and l.is_utility),
+            api.discover(api.Loader)
+        )
+
+        loaders = set()
+
+        for representation in representations:
+            for loader in api.loaders_from_representation(
+                    available_loaders,
+                    representation
+            ):
+                loaders.add(loader)
+
+        return loaders
+
     def _get_document_names(self, document_type, parents=[]):
 
         query = {"type": document_type}
@@ -804,7 +872,9 @@ class SwitchAssetDialog(QtWidgets.QDialog):
 
         return io.find(query).distinct("name")
 
-    def _on_accept(self):
+    def _on_action_clicked(self, action):
+
+        selected_loader = action.data()
 
         # Use None when not a valid value or when placeholder value
         asset = self._assets_box.get_valid_value() or None
@@ -816,13 +886,14 @@ class SwitchAssetDialog(QtWidgets.QDialog):
             return
 
         for item in self._items:
-            try:
-                switch_item(item,
-                            asset_name=asset,
-                            subset_name=subset,
-                            representation_name=representation)
-            except Exception as e:
-                self.log.warning(e)
+            # try:
+            switch_item(item,
+                        asset_name=asset,
+                        subset_name=subset,
+                        representation_name=representation,
+                        selected_loader=selected_loader)
+            # except Exception as e:
+            #    self.log.warning(e)
 
         self.switched.emit()
 
