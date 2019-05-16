@@ -1147,7 +1147,7 @@ def update(container, version=-1):
     return loader.update(container, new_representation)
 
 
-def switch(container, representation):
+def switch(container, representation, options=None):
     """Switch a container to representation
 
     Args:
@@ -1158,10 +1158,24 @@ def switch(container, representation):
         function call
     """
 
-    # Get the Loader for this container
-    Loader = _get_container_loader(container)
-    if not Loader:
-        raise RuntimeError("Can't switch container. See log for details.")
+    options = options or dict()
+    cross_load = False
+
+    if (options.get("loader") and
+            container["loader"] != options["loader"].__name__):
+        # Get Loader from options
+        Loader_opt = options["loader"]
+
+        if not hasattr(Loader_opt, "covered"):
+            raise RuntimeError("Cross load not supported.")
+
+        cross_load = True
+        Loader = Loader_opt
+    else:
+        # Get the Loader for this container
+        Loader = _get_container_loader(container)
+        if not Loader:
+            raise RuntimeError("Can't switch container. See log for details.")
 
     if not hasattr(Loader, "switch"):
         # Backwards compatibility (classes without switch support
@@ -1183,6 +1197,10 @@ def switch(container, representation):
 
     Loader = _make_backwards_compatible_loader(Loader)
     loader = Loader(new_context)
+
+    if cross_load:
+        assert loader.covered(container, representation, options), (
+            "Not covered.")
 
     return loader.switch(container, new_representation)
 
