@@ -545,6 +545,10 @@ class SwitchAssetDialog(QtWidgets.QDialog):
 
     def refresh(self, refresh_type=0):
         """Build the need comboboxes with content"""
+
+        # Block
+        self._accept_btn.setEnabled(False)
+
         if refresh_type < 1:
             assets = sorted(self._get_assets())
             self._assets_box.populate(assets)
@@ -580,6 +584,9 @@ class SwitchAssetDialog(QtWidgets.QDialog):
                     self._representations_box.setCurrentIndex(index)
 
         self.set_labels()
+        tools_lib.schedule(self._on_refreshed, 500, channel="inventory")
+
+    def _on_refreshed(self):
         self.validate()
 
     def set_labels(self):
