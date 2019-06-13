@@ -886,14 +886,14 @@ class SwitchAssetDialog(QtWidgets.QDialog):
             return
 
         for item in self._items:
-            # try:
-            switch_item(item,
-                        asset_name=asset,
-                        subset_name=subset,
-                        representation_name=representation,
-                        selected_loader=selected_loader)
-            # except Exception as e:
-            #    self.log.warning(e)
+            try:
+                switch_item(item,
+                            asset_name=asset,
+                            subset_name=subset,
+                            representation_name=representation,
+                            selected_loader=selected_loader)
+            except Exception as e:
+                self.log.warning(e)
 
         self.switched.emit()
 
